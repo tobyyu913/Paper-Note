@@ -163,6 +163,15 @@ struct NotebookView: View {
                 .help("Save this page as a PNG in Documents/note book")
                 .disabled(!coverOpen || turning)
 
+                Button(action: exportPDF) {
+                    Image(systemName: "arrow.down.doc")
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white.opacity(0.85))
+                .help("Export the whole notebook as a PDF in Documents/note book")
+                .disabled(turning)
+
                 Text(coverOpen ? "Page \(index + 1) of \(notebook.pages.count)" : "Cover")
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.7))
@@ -264,6 +273,48 @@ struct NotebookView: View {
             show("Saved \(name)")
         } catch {
             show("Save failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Renders every page of the notebook into one multi-page PDF saved as
+    /// "<title>.pdf" in Documents/note book.
+    @MainActor private func exportPDF() {
+        let pageSize = CGSize(width: Theme.pageWidth, height: Theme.pageHeight)
+        let pdfData = NSMutableData()
+        var mediaBox = CGRect(origin: .zero, size: pageSize)
+        guard let consumer = CGDataConsumer(data: pdfData as CFMutableData),
+              let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)
+        else { show("Couldn’t create PDF"); return }
+
+        for text in notebook.pages {
+            let renderer = ImageRenderer(
+                content: PageSnapshot(text: text).frame(width: pageSize.width, height: pageSize.height))
+            renderer.render { size, renderInContext in
+                var pageBox = CGRect(origin: .zero, size: size)
+                ctx.beginPage(mediaBox: &pageBox)
+                renderInContext(ctx)
+                ctx.endPage()
+            }
+        }
+        ctx.closePDF()
+
+        let illegal = CharacterSet(charactersIn: "/\\:*?\"<>|")
+        let cleanTitle = notebook.title
+            .components(separatedBy: illegal).joined(separator: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = cleanTitle.isEmpty ? "Untitled" : cleanTitle
+        let name = "\(title).pdf"
+
+        do {
+            let docs = try FileManager.default.url(
+                for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            let dir = docs.appendingPathComponent("note book", isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let url = dir.appendingPathComponent(name)
+            try pdfData.write(to: url)
+            show("Saved \(name) (\(notebook.pages.count) page\(notebook.pages.count == 1 ? "" : "s"))")
+        } catch {
+            show("PDF save failed: \(error.localizedDescription)")
         }
     }
 
