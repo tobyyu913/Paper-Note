@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Xcode / Swift build output
+build/
+DerivedData/
+*.xcuserstate
+*.xcscmblueprint
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+*.iml
+
+# Misc
+*.log

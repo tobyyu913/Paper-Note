@@ -13,5 +13,7 @@ struct Paper_NoteApp: App {
         WindowGroup {
             ContentView()
         }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 900, height: 980)
     }
 }
