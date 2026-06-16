@@ -203,9 +203,11 @@ struct NotebookView: View {
     private var spreadBook: some View {
         let leftCount = index
         let rightCount = max(0, notebook.pages.count - 1 - (index + 1))
-        let open = coverOpen
         return ZStack {
-            if open {
+            // The spread is always built (so its pages are ready) and faded in
+            // as the cover swings open — otherwise its content would only pop
+            // in after the cover finishes opening.
+            Group {
                 BookEdge(pageCount: rightCount, height: pageH, trailing: true)
                     .offset(x: pageW + BookEdge.thickness(for: rightCount) / 2 - 1)
                 BookEdge(pageCount: leftCount, height: pageH, trailing: false)
@@ -213,6 +215,7 @@ struct NotebookView: View {
 
                 spreadPageStack
             }
+            .opacity(spreadReveal)
 
             if coverShowing {
                 CoverView(notebook: $notebook, onOpenStud: goForward)
@@ -224,7 +227,14 @@ struct NotebookView: View {
                     .shadow(color: .black.opacity(0.4), radius: 18, x: 8, y: 10)
             }
         }
-        .frame(width: open ? pageW * 2 : pageW, height: pageH)
+        .frame(width: pageW * 2, height: pageH)
+    }
+
+    /// How visible the spread is as the cover swings from closed (0°) to open
+    /// (-168°): hidden behind the closed cover, fading in as it passes 90°.
+    private var spreadReveal: Double {
+        guard coverShowing else { return 1 }
+        return min(1, max(0, (-coverAngle - 90) / 78))
     }
 
     private var spreadPageStack: some View {
@@ -243,9 +253,14 @@ struct NotebookView: View {
                     spreadLeaf(front: topIndex, back: topIndex - 1, forward: false)
                         .offset(x: -pageW / 2)
                 }
+            } else if coverOpen {
+                pageSurface(index, editable: true).offset(x: -pageW / 2)
+                pageSurface(index + 1, editable: true).offset(x: pageW / 2)
             } else {
-                pageSurface(index, editable: coverOpen).offset(x: -pageW / 2)
-                pageSurface(index + 1, editable: coverOpen).offset(x: pageW / 2)
+                // Cover still opening: static text fades in reliably (the live
+                // editor is an NSTextView and may ignore the parent's opacity).
+                staticPageSurface(index).offset(x: -pageW / 2)
+                staticPageSurface(index + 1).offset(x: pageW / 2)
             }
         }
     }
