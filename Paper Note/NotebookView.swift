@@ -158,8 +158,8 @@ struct NotebookView: View {
     private var pageStack: some View {
         ZStack {
             if turning {
-                pageSurface(bottomIndex, editable: false)          // waiting page
-                pageSurface(topIndex, editable: false)             // turning page
+                staticPageSurface(bottomIndex)                     // waiting page
+                staticPageSurface(topIndex)                        // turning page
                     .modifier(PageCurl(progress: turnProgress, forward: turnForward))
             } else {
                 pageSurface(index, editable: coverOpen)
@@ -172,16 +172,27 @@ struct NotebookView: View {
             LinedPaper()
             RuledTextEditor(text: pageBinding(i), editable: editable)
         }
-        .frame(width: pageW, height: pageH)
-        .background(Theme.paperTop)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.black.opacity(0.12), lineWidth: 1))
-        .overlay(alignment: .leading) {
-            LinearGradient(colors: [.black.opacity(0.16), .clear],
-                           startPoint: .leading, endPoint: .trailing)
-                .frame(width: 24)
-                .allowsHitTesting(false)
+        .modifier(PageChrome())
+    }
+
+    /// A non-editable page drawn with a plain SwiftUI `Text` instead of the
+    /// NSTextView-backed editor. AppKit views don't render inside a
+    /// `rotation3DEffect`, so turning/waiting pages must use this or they show
+    /// up blank until the animation settles.
+    private func staticPageSurface(_ i: Int) -> some View {
+        let text = notebook.pages.indices.contains(i) ? notebook.pages[i] : ""
+        return ZStack {
+            LinedPaper()
+            Text(text)
+                .font(.custom(Ruling.fontName, size: Ruling.fontSize))
+                .foregroundStyle(Theme.ink)
+                .lineSpacing(Ruling.lineSpacing)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.leading, Ruling.leftInset)
+                .padding(.trailing, Ruling.leftInset)
+                .padding(.top, Ruling.topInset)
         }
+        .modifier(PageChrome())
     }
 
     // MARK: - The spread (full screen)
@@ -222,13 +233,13 @@ struct NotebookView: View {
                 if turnForward {
                     // The whole next spread waits underneath; the right leaf
                     // (front = old right, back = new left) flips left onto it.
-                    pageSurface(index, editable: false).offset(x: -pageW / 2)         // old left, until covered
-                    pageSurface(bottomIndex, editable: false).offset(x: pageW / 2)    // new right, waiting
+                    staticPageSurface(index).offset(x: -pageW / 2)         // old left, until covered
+                    staticPageSurface(bottomIndex).offset(x: pageW / 2)    // new right, waiting
                     spreadLeaf(front: topIndex, back: topIndex + 1, forward: true)
                         .offset(x: pageW / 2)
                 } else {
-                    pageSurface(index + 1, editable: false).offset(x: pageW / 2)      // old right, until covered
-                    pageSurface(bottomIndex, editable: false).offset(x: -pageW / 2)   // new left, waiting
+                    staticPageSurface(index + 1).offset(x: pageW / 2)      // old right, until covered
+                    staticPageSurface(bottomIndex).offset(x: -pageW / 2)   // new left, waiting
                     spreadLeaf(front: topIndex, back: topIndex - 1, forward: false)
                         .offset(x: -pageW / 2)
                 }
@@ -250,9 +261,9 @@ struct NotebookView: View {
         let edge = 1 - abs(t - 0.5) * 2                 // 0 flat … 1 edge-on
         let showingBack = abs(angle) > 90
         return ZStack {
-            pageSurface(front, editable: false)
+            staticPageSurface(front)
                 .opacity(showingBack ? 0 : 1)
-            pageSurface(back, editable: false)
+            staticPageSurface(back)
                 .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))   // pre-mirror the reverse side
                 .opacity(showingBack ? 1 : 0)
         }
@@ -513,6 +524,26 @@ struct NotebookView: View {
     private func removeKeyMonitor() {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
+    }
+}
+
+// MARK: - Page chrome
+
+/// Shared paper styling: fixed page size, cream background, rounded corners,
+/// hairline border, and the binding-shadow down the left edge.
+struct PageChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .frame(width: Theme.pageWidth, height: Theme.pageHeight)
+            .background(Theme.paperTop)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.black.opacity(0.12), lineWidth: 1))
+            .overlay(alignment: .leading) {
+                LinearGradient(colors: [.black.opacity(0.16), .clear],
+                               startPoint: .leading, endPoint: .trailing)
+                    .frame(width: 24)
+                    .allowsHitTesting(false)
+            }
     }
 }
 
