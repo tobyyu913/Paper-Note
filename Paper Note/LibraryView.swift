@@ -10,6 +10,9 @@ import SwiftUI
 struct LibraryView: View {
     @Bindable var library: Library
 
+    @State private var pendingDelete: Notebook?
+    @State private var showPasscodeSheet = false
+
     private let columns = [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 28)]
 
     var body: some View {
@@ -22,12 +25,24 @@ struct LibraryView: View {
             .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 0) {
-                Text("My Notebooks")
-                    .font(.custom(Ruling.fontName, size: 34).weight(.bold))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .padding(.horizontal, 32)
-                    .padding(.top, 28)
-                    .padding(.bottom, 18)
+                HStack {
+                    Text("My Notebooks")
+                        .font(.custom(Ruling.fontName, size: 34).weight(.bold))
+                        .foregroundStyle(.white.opacity(0.92))
+
+                    Spacer()
+
+                    Button { showPasscodeSheet = true } label: {
+                        Label("Passcode", systemImage: "lock.rotation")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .help("Change the passcode used to unlock notebooks")
+                }
+                .padding(.horizontal, 32)
+                .padding(.top, 28)
+                .padding(.bottom, 18)
 
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 30) {
@@ -40,6 +55,19 @@ struct LibraryView: View {
                 }
             }
         }
+        .alert("Delete this notebook?", isPresented: deleteAlertBinding, presenting: pendingDelete) { nb in
+            Button("Delete", role: .destructive) { library.delete(nb.id) }
+            Button("Cancel", role: .cancel) { }
+        } message: { nb in
+            Text("“\(nb.title.isEmpty ? "Untitled" : nb.title)” and all \(nb.pages.count) page\(nb.pages.count == 1 ? "" : "s") will be permanently deleted. This can’t be undone.")
+        }
+        .sheet(isPresented: $showPasscodeSheet) {
+            PasscodeSheet(library: library)
+        }
+    }
+
+    private var deleteAlertBinding: Binding<Bool> {
+        Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })
     }
 
     private func spine(for nb: Notebook) -> some View {
@@ -94,7 +122,7 @@ struct LibraryView: View {
             HStack {
                 Spacer()
                 Menu {
-                    Button(role: .destructive) { library.delete(nb.id) } label: {
+                    Button(role: .destructive) { pendingDelete = nb } label: {
                         Label("Delete", systemImage: "trash")
                     }
                 } label: {

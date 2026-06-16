@@ -9,14 +9,26 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var library = Library()
+    /// The notebook whose lock has been cleared this session. Cleared on close
+    /// so re-opening always asks for Touch ID / passcode again.
+    @State private var unlockedID: Notebook.ID?
 
     var body: some View {
         Group {
             if let id = library.openID,
-               library.notebooks.contains(where: { $0.id == id }) {
-                NotebookView(notebook: library.binding(for: id),
-                             onClose: { library.openID = nil })
-                .id(id)   // fresh state per notebook
+               let nb = library.notebooks.first(where: { $0.id == id }) {
+                if unlockedID == id {
+                    NotebookView(notebook: library.binding(for: id),
+                                 onClose: { library.openID = nil; unlockedID = nil })
+                    .id(id)   // fresh state per notebook
+                } else {
+                    UnlockView(
+                        title: nb.title,
+                        passcode: library.passcode,
+                        onUnlock: { unlockedID = id },
+                        onCancel: { library.openID = nil }
+                    )
+                }
             } else {
                 LibraryView(library: library)
             }

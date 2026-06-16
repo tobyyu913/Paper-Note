@@ -56,6 +56,17 @@ final class Library {
         if openID == id { openID = nil }
     }
 
+    // MARK: - Lock
+
+    /// The passcode that unlocks a notebook when Touch ID is unavailable or
+    /// declined. Defaults to "paper note"; the owner can change it.
+    static let defaultPasscode = "paper note"
+
+    var passcode: String {
+        get { UserDefaults.standard.string(forKey: "PaperNotePasscode") ?? Library.defaultPasscode }
+        set { UserDefaults.standard.set(newValue, forKey: "PaperNotePasscode") }
+    }
+
     func binding(for id: Notebook.ID) -> Binding<Notebook> {
         Binding(
             get: { self.notebooks.first(where: { $0.id == id }) ?? Notebook() },
