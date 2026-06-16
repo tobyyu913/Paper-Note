@@ -198,16 +198,17 @@ struct NotebookView: View {
     // MARK: - The spread (full screen)
 
     /// Open two-page layout: left page = `index`, right page = `index + 1`,
-    /// joined at a central spine. While the cover is closed it shows the same
-    /// single, centered cover as the windowed book.
+    /// joined at a central spine. The cover itself is a flipping leaf — its
+    /// back is the first page — so opening it is a real page turn with the
+    /// right page already waiting beside it.
     private var spreadBook: some View {
         let leftCount = index
         let rightCount = max(0, notebook.pages.count - 1 - (index + 1))
         return ZStack {
-            // The spread is always built (so its pages are ready) and faded in
-            // as the cover swings open — otherwise its content would only pop
-            // in after the cover finishes opening.
-            Group {
+            if coverShowing {
+                staticPageSurface(index + 1).offset(x: pageW / 2)   // right page, revealed as the cover lifts
+                coverLeaf
+            } else {
                 BookEdge(pageCount: rightCount, height: pageH, trailing: true)
                     .offset(x: pageW + BookEdge.thickness(for: rightCount) / 2 - 1)
                 BookEdge(pageCount: leftCount, height: pageH, trailing: false)
@@ -215,26 +216,28 @@ struct NotebookView: View {
 
                 spreadPageStack
             }
-            .opacity(spreadReveal)
-
-            if coverShowing {
-                CoverView(notebook: $notebook, onOpenStud: goForward)
-                    .rotation3DEffect(.degrees(coverAngle),
-                                      axis: (x: 0, y: 1, z: 0),
-                                      anchor: .leading,
-                                      perspective: 0.55)
-                    .opacity(coverAngle < -90 ? 0 : 1)
-                    .shadow(color: .black.opacity(0.4), radius: 18, x: 8, y: 10)
-            }
         }
         .frame(width: pageW * 2, height: pageH)
     }
 
-    /// How visible the spread is as the cover swings from closed (0°) to open
-    /// (-168°): hidden behind the closed cover, fading in as it passes 90°.
-    private var spreadReveal: Double {
-        guard coverShowing else { return 1 }
-        return min(1, max(0, (-coverAngle - 90) / 78))
+    /// The leather cover as a two-sided leaf sitting in the right-page slot.
+    /// It pivots on the spine and flips left; past vertical its back shows the
+    /// first page, which is exactly where the left page lands when open.
+    private var coverLeaf: some View {
+        let showingBack = coverAngle < -90
+        return ZStack {
+            CoverView(notebook: $notebook, onOpenStud: goForward)
+                .opacity(showingBack ? 0 : 1)
+            staticPageSurface(index)
+                .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))   // pre-mirror the reverse side
+                .opacity(showingBack ? 1 : 0)
+        }
+        .rotation3DEffect(.degrees(coverAngle),
+                          axis: (x: 0, y: 1, z: 0),
+                          anchor: .leading,
+                          perspective: 0.55)
+        .shadow(color: .black.opacity(0.4), radius: 18, x: 8, y: 10)
+        .offset(x: pageW / 2)
     }
 
     private var spreadPageStack: some View {
@@ -373,18 +376,23 @@ struct NotebookView: View {
         if index == 0 { closeCover() } else { turn(forward: false) }
     }
 
+    // The spread flips the cover a full 180° so it lands flat as the first
+    // page; the windowed book just swings it open and fades it out.
+    private var coverOpenAngle: Double { spread ? -180 : -168 }
+
     private func openCover() {
         guard coverAngle == 0 else { return }
         sound.stud()
         withAnimation(.easeIn(duration: 0.5)) {
-            coverAngle = -168
+            coverAngle = coverOpenAngle
         } completion: {
             coverShowing = false
         }
     }
 
     private func closeCover() {
-        coverShowing = true            // re-enter at the open angle (-168)…
+        coverShowing = true            // re-enter at the open angle…
+        coverAngle = coverOpenAngle
         withAnimation(.easeOut(duration: 0.5)) {
             coverAngle = 0             // …and swing shut.
         } completion: {
