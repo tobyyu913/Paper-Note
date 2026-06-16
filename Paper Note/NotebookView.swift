@@ -278,6 +278,11 @@ struct NotebookView: View {
 
     /// Renders every page of the notebook into one multi-page PDF saved as
     /// "<title>.pdf" in Documents/note book.
+    ///
+    /// Rather than drawing the SwiftUI view straight into the PDF context
+    /// (which rendered with a black background), this "photographs" each page
+    /// the same way the camera button does — ImageRenderer.cgImage — and then
+    /// draws those images into the PDF, one per page.
     @MainActor private func exportPDF() {
         let pageSize = CGSize(width: Theme.pageWidth, height: Theme.pageHeight)
         let pdfData = NSMutableData()
@@ -287,14 +292,13 @@ struct NotebookView: View {
         else { show("Couldn’t create PDF"); return }
 
         for text in notebook.pages {
-            let renderer = ImageRenderer(
-                content: PageSnapshot(text: text).frame(width: pageSize.width, height: pageSize.height))
-            renderer.render { size, renderInContext in
-                var pageBox = CGRect(origin: .zero, size: size)
-                ctx.beginPage(mediaBox: &pageBox)
-                renderInContext(ctx)
-                ctx.endPage()
-            }
+            let renderer = ImageRenderer(content: PageSnapshot(text: text))
+            renderer.scale = 3
+            guard let cg = renderer.cgImage else { continue }
+            var pageBox = CGRect(origin: .zero, size: pageSize)
+            ctx.beginPage(mediaBox: &pageBox)
+            ctx.draw(cg, in: pageBox)
+            ctx.endPage()
         }
         ctx.closePDF()
 
