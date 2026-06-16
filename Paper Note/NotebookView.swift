@@ -31,8 +31,15 @@ struct NotebookView: View {
     @State private var keyMonitor: Any?
     @State private var toast: String?
 
+    // Full screen shows an open two-page spread; the window shows one page.
+    @State private var isFullScreen = false
+    @State private var fsObservers: [NSObjectProtocol] = []
+
     private let pageW = Theme.pageWidth
     private let pageH = Theme.pageHeight
+
+    /// Two pages side by side, only once the cover is open and we're full screen.
+    private var spread: Bool { isFullScreen }
 
     var body: some View {
         ZStack {
@@ -46,8 +53,10 @@ struct NotebookView: View {
             .contentShape(Rectangle())
             .onTapGesture { endEditing() }
 
-            book
-                .shadow(color: .black.opacity(0.5), radius: 26, x: 0, y: 16)
+            Group {
+                if spread { spreadBook } else { book }
+            }
+            .shadow(color: .black.opacity(0.5), radius: 26, x: 0, y: 16)
 
             topBar
 
@@ -62,8 +71,44 @@ struct NotebookView: View {
                     .transition(.opacity)
             }
         }
-        .onAppear(perform: installKeyMonitor)
-        .onDisappear(perform: removeKeyMonitor)
+        .onAppear {
+            installKeyMonitor()
+            installFullScreenObservers()
+        }
+        .onDisappear {
+            removeKeyMonitor()
+            removeFullScreenObservers()
+        }
+    }
+
+    // MARK: - Full screen
+
+    private func installFullScreenObservers() {
+        guard fsObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        // Seed from the current window state.
+        if let mask = NSApp.keyWindow?.styleMask { isFullScreen = mask.contains(.fullScreen) }
+        let enter = center.addObserver(forName: NSWindow.didEnterFullScreenNotification,
+                                       object: nil, queue: .main) { _ in
+            enterSpread()
+        }
+        let exit = center.addObserver(forName: NSWindow.didExitFullScreenNotification,
+                                      object: nil, queue: .main) { _ in
+            isFullScreen = false
+        }
+        fsObservers = [enter, exit]
+    }
+
+    private func enterSpread() {
+        isFullScreen = true
+        // Spreads pair pages (0,1), (2,3)… so the left page must be even.
+        if index % 2 != 0 { index -= 1 }
+    }
+
+    private func removeFullScreenObservers() {
+        let center = NotificationCenter.default
+        fsObservers.forEach(center.removeObserver)
+        fsObservers = []
     }
 
     // MARK: - The book
@@ -97,6 +142,16 @@ struct NotebookView: View {
 
     private var coverOpen: Bool { !coverShowing }
 
+    private var pageLabel: String {
+        guard coverOpen else { return "Cover" }
+        let n = notebook.pages.count
+        if spread {
+            let right = min(index + 2, n)
+            return "Pages \(index + 1)–\(right) of \(n)"
+        }
+        return "Page \(index + 1) of \(n)"
+    }
+
     private var pageStack: some View {
         ZStack {
             if turning {
@@ -123,6 +178,59 @@ struct NotebookView: View {
                            startPoint: .leading, endPoint: .trailing)
                 .frame(width: 24)
                 .allowsHitTesting(false)
+        }
+    }
+
+    // MARK: - The spread (full screen)
+
+    /// Open two-page layout: left page = `index`, right page = `index + 1`,
+    /// joined at a central spine. While the cover is closed it shows the same
+    /// single, centered cover as the windowed book.
+    private var spreadBook: some View {
+        let leftCount = index
+        let rightCount = max(0, notebook.pages.count - 1 - (index + 1))
+        let open = coverOpen
+        return ZStack {
+            if open {
+                BookEdge(pageCount: rightCount, height: pageH, trailing: true)
+                    .offset(x: pageW + BookEdge.thickness(for: rightCount) / 2 - 1)
+                BookEdge(pageCount: leftCount, height: pageH, trailing: false)
+                    .offset(x: -(pageW + BookEdge.thickness(for: leftCount) / 2 - 1))
+
+                spreadPageStack
+            }
+
+            if coverShowing {
+                CoverView(notebook: $notebook, onOpenStud: goForward)
+                    .rotation3DEffect(.degrees(coverAngle),
+                                      axis: (x: 0, y: 1, z: 0),
+                                      anchor: .leading,
+                                      perspective: 0.55)
+                    .opacity(coverAngle < -90 ? 0 : 1)
+                    .shadow(color: .black.opacity(0.4), radius: 18, x: 8, y: 10)
+            }
+        }
+        .frame(width: open ? pageW * 2 : pageW, height: pageH)
+    }
+
+    private var spreadPageStack: some View {
+        ZStack {
+            if turning {
+                if turnForward {
+                    pageSurface(index, editable: false).offset(x: -pageW / 2)        // left stays
+                    pageSurface(bottomIndex, editable: false).offset(x: pageW / 2)    // next right, waiting
+                    pageSurface(topIndex, editable: false).offset(x: pageW / 2)       // right leaf turning left
+                        .modifier(SpreadCurl(progress: turnProgress, forward: true))
+                } else {
+                    pageSurface(index + 1, editable: false).offset(x: pageW / 2)      // right stays
+                    pageSurface(bottomIndex, editable: false).offset(x: -pageW / 2)   // prev left, waiting
+                    pageSurface(topIndex, editable: false).offset(x: -pageW / 2)      // left leaf turning right
+                        .modifier(SpreadCurl(progress: turnProgress, forward: false))
+                }
+            } else {
+                pageSurface(index, editable: coverOpen).offset(x: -pageW / 2)
+                pageSurface(index + 1, editable: coverOpen).offset(x: pageW / 2)
+            }
         }
     }
 
@@ -172,10 +280,10 @@ struct NotebookView: View {
                 .help("Export the whole notebook as a PDF in Documents/note book")
                 .disabled(turning)
 
-                Text(coverOpen ? "Page \(index + 1) of \(notebook.pages.count)" : "Cover")
+                Text(pageLabel)
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.7))
-                    .frame(width: 110, alignment: .trailing)
+                    .frame(width: 130, alignment: .trailing)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
@@ -222,13 +330,27 @@ struct NotebookView: View {
     }
 
     private func turn(forward: Bool) {
+        let step = spread ? 2 : 1
         if forward {
-            if index >= notebook.pages.count - 1 { notebook.pages.append("") }
-            topIndex = index
-            bottomIndex = index + 1
+            // Make sure the pages the next spread/page reveals exist.
+            while notebook.pages.count < index + step + (spread ? 2 : 1) {
+                notebook.pages.append("")
+            }
+            if spread {
+                topIndex = index + 1          // right leaf flipping left
+                bottomIndex = index + 3       // right page of the next spread
+            } else {
+                topIndex = index
+                bottomIndex = index + 1
+            }
         } else {
-            topIndex = index - 1
-            bottomIndex = index
+            if spread {
+                topIndex = index              // left leaf flipping right
+                bottomIndex = index - 2       // left page of the previous spread
+            } else {
+                topIndex = index - 1
+                bottomIndex = index
+            }
         }
         turnForward = forward
         turnProgress = 0
@@ -237,7 +359,7 @@ struct NotebookView: View {
         withAnimation(.easeInOut(duration: 0.55)) {
             turnProgress = 1
         } completion: {
-            index += forward ? 1 : -1
+            index += forward ? step : -step
             turning = false
         }
     }
@@ -387,5 +509,37 @@ struct PageCurl: ViewModifier, Animatable {
                               anchor: .leading,
                               perspective: 0.5)
             .shadow(color: .black.opacity(0.25 * lift), radius: 12, x: -10 * lift, y: 6)
+    }
+}
+
+/// The spread version of the page curl. The pivot is the central spine — the
+/// turning leaf's inner edge — so a forward turn lifts the right page and
+/// sweeps it left, and a backward turn lifts the left page and sweeps it right.
+struct SpreadCurl: ViewModifier, Animatable {
+    var progress: CGFloat
+    var forward: Bool
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let angle = (forward ? -160.0 : 160.0) * progress
+        let lift = abs(angle) / 160
+        return content
+            .overlay(
+                LinearGradient(
+                    colors: [.black.opacity(0.28 * lift), .clear, .white.opacity(0.10 * lift)],
+                    startPoint: .leading, endPoint: .trailing
+                )
+                .allowsHitTesting(false)
+            )
+            .rotation3DEffect(.degrees(angle),
+                              axis: (x: 0, y: 1, z: 0),
+                              anchor: forward ? .leading : .trailing,
+                              perspective: 0.5)
+            .shadow(color: .black.opacity(0.25 * lift),
+                    radius: 12, x: (forward ? -10 : 10) * lift, y: 6)
     }
 }
