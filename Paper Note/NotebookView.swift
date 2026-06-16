@@ -220,21 +220,55 @@ struct NotebookView: View {
         ZStack {
             if turning {
                 if turnForward {
-                    pageSurface(index, editable: false).offset(x: -pageW / 2)        // left stays
-                    pageSurface(bottomIndex, editable: false).offset(x: pageW / 2)    // next right, waiting
-                    pageSurface(topIndex, editable: false).offset(x: pageW / 2)       // right leaf turning left
-                        .modifier(SpreadCurl(progress: turnProgress, forward: true))
+                    // The whole next spread waits underneath; the right leaf
+                    // (front = old right, back = new left) flips left onto it.
+                    pageSurface(index, editable: false).offset(x: -pageW / 2)         // old left, until covered
+                    pageSurface(bottomIndex, editable: false).offset(x: pageW / 2)    // new right, waiting
+                    spreadLeaf(front: topIndex, back: topIndex + 1, forward: true)
+                        .offset(x: pageW / 2)
                 } else {
-                    pageSurface(index + 1, editable: false).offset(x: pageW / 2)      // right stays
-                    pageSurface(bottomIndex, editable: false).offset(x: -pageW / 2)   // prev left, waiting
-                    pageSurface(topIndex, editable: false).offset(x: -pageW / 2)      // left leaf turning right
-                        .modifier(SpreadCurl(progress: turnProgress, forward: false))
+                    pageSurface(index + 1, editable: false).offset(x: pageW / 2)      // old right, until covered
+                    pageSurface(bottomIndex, editable: false).offset(x: -pageW / 2)   // new left, waiting
+                    spreadLeaf(front: topIndex, back: topIndex - 1, forward: false)
+                        .offset(x: -pageW / 2)
                 }
             } else {
                 pageSurface(index, editable: coverOpen).offset(x: -pageW / 2)
                 pageSurface(index + 1, editable: coverOpen).offset(x: pageW / 2)
             }
         }
+    }
+
+    /// A single leaf flipping about the spine, with content on both faces.
+    /// `front` shows for the first half of the turn, `back` (the new facing
+    /// page) for the second half, so the page lands already showing its
+    /// content instead of snapping in afterwards. Forward turns pivot on the
+    /// leading edge (right leaf → left); backward turns on the trailing edge.
+    private func spreadLeaf(front: Int, back: Int, forward: Bool) -> some View {
+        let angle = (forward ? -180.0 : 180.0) * turnProgress
+        let t = abs(angle) / 180                       // 0 flat … 1 fully turned
+        let edge = 1 - abs(t - 0.5) * 2                 // 0 flat … 1 edge-on
+        let showingBack = abs(angle) > 90
+        return ZStack {
+            pageSurface(front, editable: false)
+                .opacity(showingBack ? 0 : 1)
+            pageSurface(back, editable: false)
+                .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))   // pre-mirror the reverse side
+                .opacity(showingBack ? 1 : 0)
+        }
+        .overlay(
+            LinearGradient(
+                colors: [.black.opacity(0.28 * edge), .clear, .white.opacity(0.10 * edge)],
+                startPoint: .leading, endPoint: .trailing
+            )
+            .allowsHitTesting(false)
+        )
+        .rotation3DEffect(.degrees(angle),
+                          axis: (x: 0, y: 1, z: 0),
+                          anchor: forward ? .leading : .trailing,
+                          perspective: 0.5)
+        .shadow(color: .black.opacity(0.25 * edge),
+                radius: 12, x: (forward ? -10 : 10) * t, y: 6)
     }
 
     // MARK: - Top bar
@@ -512,37 +546,5 @@ struct PageCurl: ViewModifier, Animatable {
                               anchor: .leading,
                               perspective: 0.5)
             .shadow(color: .black.opacity(0.25 * lift), radius: 12, x: -10 * lift, y: 6)
-    }
-}
-
-/// The spread version of the page curl. The pivot is the central spine — the
-/// turning leaf's inner edge — so a forward turn lifts the right page and
-/// sweeps it left, and a backward turn lifts the left page and sweeps it right.
-struct SpreadCurl: ViewModifier, Animatable {
-    var progress: CGFloat
-    var forward: Bool
-
-    var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
-    }
-
-    func body(content: Content) -> some View {
-        let angle = (forward ? -160.0 : 160.0) * progress
-        let lift = abs(angle) / 160
-        return content
-            .overlay(
-                LinearGradient(
-                    colors: [.black.opacity(0.28 * lift), .clear, .white.opacity(0.10 * lift)],
-                    startPoint: .leading, endPoint: .trailing
-                )
-                .allowsHitTesting(false)
-            )
-            .rotation3DEffect(.degrees(angle),
-                              axis: (x: 0, y: 1, z: 0),
-                              anchor: forward ? .leading : .trailing,
-                              perspective: 0.5)
-            .shadow(color: .black.opacity(0.25 * lift),
-                    radius: 12, x: (forward ? -10 : 10) * lift, y: 6)
     }
 }
