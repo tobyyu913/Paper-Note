@@ -86,8 +86,11 @@ struct NotebookView: View {
     private func installFullScreenObservers() {
         guard fsObservers.isEmpty else { return }
         let center = NotificationCenter.default
-        // Seed from the current window state.
-        if let mask = NSApp.keyWindow?.styleMask { isFullScreen = mask.contains(.fullScreen) }
+        // If the app is already full screen when this notebook opens, start in
+        // the spread. keyWindow can be nil mid-transition, so scan all windows.
+        if NSApp.windows.contains(where: { $0.styleMask.contains(.fullScreen) }) {
+            enterSpread()
+        }
         let enter = center.addObserver(forName: NSWindow.didEnterFullScreenNotification,
                                        object: nil, queue: .main) { _ in
             enterSpread()
