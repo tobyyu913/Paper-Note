@@ -6,15 +6,29 @@ spread in full screen, Touch ID / passcode locking, and PNG / PDF export.
 
 ## ⬇️ Download
 
-**[Download the latest macOS app →](https://github.com/tobyyu913/Paper-Note/releases/latest)**
+[![Download for macOS](https://img.shields.io/badge/Download-macOS-0a84ff?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/tobyyu913/Paper-Note/releases/latest)
+[![Download for Android](https://img.shields.io/badge/Download-Android-3ddc84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/tobyyu913/Paper-Note/releases/latest)
+[![All versions](https://img.shields.io/badge/All_versions-history-555?style=for-the-badge&logo=github&logoColor=white)](https://github.com/tobyyu913/Paper-Note/releases)
 
-1. Open the link above and download `PaperNote-macOS.zip` from the **Assets**.
+Grab the latest build from the buttons above, or browse **[all past versions](https://github.com/tobyyu913/Paper-Note/releases)**.
+
+### macOS
+
+1. Download `PaperNote-macOS.zip` from the latest release's **Assets**.
 2. Unzip it and drag **Paper Note.app** into your `/Applications` folder.
 3. The app isn't notarized, so the first time you open it macOS will warn that
    it's from an unidentified developer. **Right-click the app → Open → Open**
    (you only need to do this once).
 
 Requires macOS 14 or later.
+
+### Android
+
+1. Download `PaperNote-Android.apk` from the latest release's **Assets**.
+2. Open it on your phone and allow installs from your browser / files app when
+   prompted (**Settings → Install unknown apps**).
+
+Requires Android 8.0 (API 26) or later.
 
 ## Features
 
