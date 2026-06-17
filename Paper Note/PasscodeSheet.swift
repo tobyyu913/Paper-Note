@@ -21,8 +21,20 @@ struct PasscodeSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Change Passcode")
+            Text("Security")
                 .font(.system(size: 18, weight: .semibold))
+
+            if library.biometricsAvailable {
+                Toggle("Unlock with Touch ID", isOn: $library.useBiometrics)
+                    .toggleStyle(.switch)
+                Text("When off, notebooks open with the passcode only.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Divider().padding(.vertical, 2)
+            }
+
+            Text("Passcode")
+                .font(.system(size: 14, weight: .medium))
 
             if authed {
                 Text("Verified. Choose a new passcode.")
@@ -36,12 +48,14 @@ struct PasscodeSheet: View {
                     .foregroundStyle(.secondary)
                 SecureField("Current passcode", text: $current)
                     .onSubmit(verifyCurrent)
-                Button {
-                    authenticateBiometrics()
-                } label: {
-                    Label("Use Touch ID", systemImage: "touchid")
+                if library.useBiometrics && library.biometricsAvailable {
+                    Button {
+                        authenticateBiometrics()
+                    } label: {
+                        Label("Use Touch ID", systemImage: "touchid")
+                    }
+                    .buttonStyle(.link)
                 }
-                .buttonStyle(.link)
             }
 
             if let error {

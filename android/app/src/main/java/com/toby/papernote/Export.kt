@@ -8,6 +8,7 @@ import android.graphics.Color as AColor
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
+import android.graphics.pdf.PdfDocument
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -21,6 +22,38 @@ import java.io.FileOutputStream
 object PageExporter {
     /** Renders a page to a PNG and saves it as "<title>-P<n>.png" in Pictures/note book. */
     fun capture(context: Context, notebook: Notebook, pageIndex: Int): Result<String> = runCatching {
+        val bmp = renderPage(context, notebook, pageIndex)
+        val name = "${safeTitle(notebook)}-P${pageIndex + 1}.png"
+        saveBitmap(context, bmp, name)
+        "Pictures/note book/$name"
+    }
+
+    /** Renders every page into one multi-page PDF saved as "<title>.pdf" in Documents/note book. */
+    fun exportPdf(context: Context, notebook: Notebook): Result<String> = runCatching {
+        val doc = PdfDocument()
+        try {
+            notebook.pages.forEachIndexed { i, _ ->
+                val bmp = renderPage(context, notebook, i)
+                val info = PdfDocument.PageInfo.Builder(bmp.width, bmp.height, i + 1).create()
+                val page = doc.startPage(info)
+                page.canvas.drawBitmap(bmp, 0f, 0f, null)
+                doc.finishPage(page)
+            }
+            val name = "${safeTitle(notebook)}.pdf"
+            savePdf(context, doc, name)
+            "Documents/note book/$name"
+        } finally {
+            doc.close()
+        }
+    }
+
+    private fun safeTitle(notebook: Notebook): String = notebook.title
+        .replace(Regex("[/\\\\:*?\"<>|]"), "-")
+        .trim()
+        .ifEmpty { "Untitled" }
+
+    /** Draws one page (ruled paper + text) into a bitmap. */
+    private fun renderPage(context: Context, notebook: Notebook, pageIndex: Int): Bitmap {
         val w = 1080
         val h = (w / Paper.aspect).toInt()
         val leftInset = w * 0.135f
@@ -90,14 +123,7 @@ object PageExporter {
         layout.draw(canvas)
         canvas.restore()
 
-        val safeTitle = notebook.title
-            .replace(Regex("[/\\\\:*?\"<>|]"), "-")
-            .trim()
-            .ifEmpty { "Untitled" }
-        val name = "$safeTitle-P${pageIndex + 1}.png"
-
-        saveBitmap(context, bmp, name)
-        "Pictures/note book/$name"
+        return bmp
     }
 
     private fun saveBitmap(context: Context, bmp: Bitmap, name: String) {
@@ -121,6 +147,31 @@ object PageExporter {
             dir.mkdirs()
             FileOutputStream(File(dir, name)).use { out ->
                 bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+        }
+    }
+
+    private fun savePdf(context: Context, doc: PdfDocument, name: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Documents/note book")
+            }
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Files.getContentUri("external"), values)
+                ?: throw IllegalStateException("Could not create file")
+            resolver.openOutputStream(uri).use { out ->
+                doc.writeTo(out!!)
+            }
+        } else {
+            val dir = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                "note book"
+            )
+            dir.mkdirs()
+            FileOutputStream(File(dir, name)).use { out ->
+                doc.writeTo(out)
             }
         }
     }

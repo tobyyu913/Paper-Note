@@ -14,6 +14,8 @@ struct UnlockView: View {
     var title: String
     /// The expected passcode (from Library.passcode).
     var passcode: String
+    /// Whether Touch ID is offered. When false, only the passcode unlocks.
+    var useBiometrics: Bool
     var onUnlock: () -> Void
     var onCancel: () -> Void
 
@@ -22,6 +24,14 @@ struct UnlockView: View {
     @State private var shake: CGFloat = 0
 
     private var bookName: String { title.isEmpty ? "this notebook" : "“\(title)”" }
+
+    /// Touch ID is only offered when the owner enabled it *and* the Mac has the
+    /// hardware for it.
+    private var biometricsReady: Bool {
+        guard useBiometrics else { return false }
+        var error: NSError?
+        return LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+    }
 
     var body: some View {
         ZStack {
@@ -41,7 +51,9 @@ struct UnlockView: View {
                     .font(.custom(Ruling.fontName, size: 30).weight(.bold))
                     .foregroundStyle(.white.opacity(0.92))
 
-                Text("Unlock \(bookName) with Touch ID or your passcode.")
+                Text(biometricsReady
+                     ? "Unlock \(bookName) with Touch ID or your passcode."
+                     : "Unlock \(bookName) with your passcode.")
                     .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.6))
                     .multilineTextAlignment(.center)
@@ -67,13 +79,15 @@ struct UnlockView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(entry.isEmpty)
 
-                    Button(action: authenticateBiometrics) {
-                        Label("Use Touch ID", systemImage: "touchid")
-                            .font(.system(size: 13, weight: .medium))
+                    if biometricsReady {
+                        Button(action: authenticateBiometrics) {
+                            Label("Use Touch ID", systemImage: "touchid")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .padding(.top, 2)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.8))
-                    .padding(.top, 2)
                 }
 
                 Button(action: onCancel) {
@@ -86,7 +100,7 @@ struct UnlockView: View {
             }
             .padding(40)
         }
-        .onAppear(perform: authenticateBiometrics)
+        .onAppear { if biometricsReady { authenticateBiometrics() } }
     }
 
     private func submitPasscode() {
@@ -100,6 +114,7 @@ struct UnlockView: View {
     }
 
     private func authenticateBiometrics() {
+        guard useBiometrics else { return }
         let ctx = LAContext()
         var error: NSError?
         guard ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else { return }

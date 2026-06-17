@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -127,6 +130,15 @@ fun NotebookScreen(store: NotebookStore, index: Int) {
         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
     }
 
+    fun exportPdf() {
+        val nb = store.notebooks[index]
+        val result = PageExporter.exportPdf(context, nb)
+        val msg = result.getOrNull()?.let {
+            "Saved to $it (${nb.pageCount} page${if (nb.pageCount == 1) "" else "s"})"
+        } ?: "PDF export failed"
+        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+    }
+
     Column(Modifier.fillMaxSize().background(Paper.desk)) {
         // Top bar.
         Row(
@@ -160,6 +172,9 @@ fun NotebookScreen(store: NotebookStore, index: Int) {
             Spacer(Modifier.width(1.dp).weight(1f))
             IconButton(onClick = { capture() }, enabled = coverOpen && !turning) {
                 Icon(Icons.Filled.PhotoCamera, "Save page as PNG", tint = Color.White.copy(alpha = if (coverOpen) 0.85f else 0.3f))
+            }
+            IconButton(onClick = { exportPdf() }, enabled = !turning) {
+                Icon(Icons.Filled.PictureAsPdf, "Export notebook as PDF", tint = Color.White.copy(alpha = 0.85f))
             }
         }
 
@@ -240,9 +255,14 @@ fun NotebookScreen(store: NotebookStore, index: Int) {
             }
         }
 
-        // Bottom navigation.
+        // Bottom navigation. Keep it clear of the system nav bar and the
+        // soft keyboard (IME) — with edge-to-edge these insets aren't applied
+        // automatically, so on some phones the keyboard would cover the button.
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            Modifier.fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {

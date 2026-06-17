@@ -1,15 +1,16 @@
 package com.toby.papernote
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,10 +22,15 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,7 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -46,26 +52,52 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun App(store: NotebookStore) {
+    // The notebook whose lock has been cleared this session. Reset whenever a
+    // notebook closes, so re-opening always asks for fingerprint / passcode.
+    var unlockedIndex by remember { mutableStateOf<Int?>(null) }
     val open = store.openIndex
+
     if (open != null && open in store.notebooks.indices) {
-        NotebookScreen(store, open)
+        if (unlockedIndex == open) {
+            NotebookScreen(store, open)
+        } else {
+            UnlockScreen(
+                store = store,
+                title = store.notebooks[open].title,
+                onUnlock = { unlockedIndex = open },
+                onCancel = { store.openIndex = null }
+            )
+        }
     } else {
+        if (unlockedIndex != null) unlockedIndex = null
         LibraryScreen(store)
     }
 }
 
 @Composable
 fun LibraryScreen(store: NotebookStore) {
+    var showSecurity by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(Paper.deskDark)) {
         Column(Modifier.fillMaxSize().systemBarsPadding()) {
-            Text(
-                "My Notebooks",
-                color = Color.White.copy(alpha = 0.92f),
-                fontFamily = Handwriting,
-                fontWeight = FontWeight.Bold,
-                fontSize = 30.sp,
-                modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp)
-            )
+            Row(
+                Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 16.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "My Notebooks",
+                    color = Color.White.copy(alpha = 0.92f),
+                    fontFamily = Handwriting,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 30.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { showSecurity = true }) {
+                    Icon(
+                        Icons.Filled.Lock, "Security",
+                        tint = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+            }
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(150.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -81,6 +113,10 @@ fun LibraryScreen(store: NotebookStore) {
                     NewSpine { store.openIndex = store.newNotebook() }
                 }
             }
+        }
+
+        if (showSecurity) {
+            SecurityDialog(store) { showSecurity = false }
         }
     }
 }

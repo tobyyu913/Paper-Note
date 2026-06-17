@@ -33,12 +33,12 @@ struct LibraryView: View {
                     Spacer()
 
                     Button { showPasscodeSheet = true } label: {
-                        Label("Passcode", systemImage: "lock.rotation")
+                        Label("Security", systemImage: "lock.shield")
                             .font(.system(size: 13, weight: .medium))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.white.opacity(0.8))
-                    .help("Change the passcode used to unlock notebooks")
+                    .help("Change the passcode or Touch ID used to unlock notebooks")
                 }
                 .padding(.horizontal, 32)
                 .padding(.top, 28)

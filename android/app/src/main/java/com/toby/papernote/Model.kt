@@ -55,6 +55,25 @@ class NotebookStore(context: Context) {
     var openIndex by mutableStateOf<Int?>(null)
 
     private val file = File(context.filesDir, "library.json")
+    private val prefs = context.getSharedPreferences("paper_note", Context.MODE_PRIVATE)
+
+    /** The passcode that unlocks notebooks when fingerprint is off/unavailable. */
+    var passcode by mutableStateOf(prefs.getString(KEY_PASSCODE, DEFAULT_PASSCODE) ?: DEFAULT_PASSCODE)
+        private set
+
+    /** Whether a fingerprint may be used to unlock notebooks. Defaults to on. */
+    var useBiometrics by mutableStateOf(prefs.getBoolean(KEY_USE_BIOMETRICS, true))
+        private set
+
+    fun updatePasscode(value: String) {
+        passcode = value
+        prefs.edit().putString(KEY_PASSCODE, value).apply()
+    }
+
+    fun updateUseBiometrics(value: Boolean) {
+        useBiometrics = value
+        prefs.edit().putBoolean(KEY_USE_BIOMETRICS, value).apply()
+    }
 
     init { load() }
 
@@ -101,5 +120,11 @@ class NotebookStore(context: Context) {
             notebooks.forEach { arr.put(it.toJson()) }
             file.writeText(arr.toString())
         }
+    }
+
+    companion object {
+        const val DEFAULT_PASSCODE = "paper note"
+        private const val KEY_PASSCODE = "passcode"
+        private const val KEY_USE_BIOMETRICS = "use_biometrics"
     }
 }

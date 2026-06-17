@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import LocalAuthentication
 
 struct Notebook: Identifiable, Codable, Equatable {
     var id = UUID()
@@ -36,6 +37,18 @@ struct Notebook: Identifiable, Codable, Equatable {
 final class Library {
     var notebooks: [Notebook] = [] { didSet { save() } }
     var openID: Notebook.ID?
+
+    /// Whether Touch ID may be used to unlock notebooks. When off, only the
+    /// passcode is accepted. Persisted across launches; defaults to on.
+    var useBiometrics: Bool = (UserDefaults.standard.object(forKey: "PaperNoteUseBiometrics") as? Bool) ?? true {
+        didSet { UserDefaults.standard.set(useBiometrics, forKey: "PaperNoteUseBiometrics") }
+    }
+
+    /// True only when this Mac actually has Touch ID hardware available.
+    var biometricsAvailable: Bool {
+        var error: NSError?
+        return LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+    }
 
     init() { load() }
 

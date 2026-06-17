@@ -25,6 +25,7 @@ struct ContentView: View {
                     UnlockView(
                         title: nb.title,
                         passcode: library.passcode,
+                        useBiometrics: library.useBiometrics,
                         onUnlock: { unlockedID = id },
                         onCancel: { library.openID = nil }
                     )
