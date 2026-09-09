@@ -31,6 +31,11 @@ struct NotebookView: View {
     @State private var keyMonitor: Any?
     @State private var toast: String?
 
+    // Zoom for the whole book (view-only; page content is untouched).
+    @State private var zoom: CGFloat = 1.0
+    private let zoomRange: ClosedRange<CGFloat> = 0.5...1.6
+    private let zoomStep: CGFloat = 0.1
+
     // Full screen shows an open two-page spread; the window shows one page.
     @State private var isFullScreen = false
     @State private var fsObservers: [NSObjectProtocol] = []
@@ -57,6 +62,8 @@ struct NotebookView: View {
                 if spread { spreadBook } else { book }
             }
             .shadow(color: .black.opacity(0.5), radius: 26, x: 0, y: 16)
+            .scaleEffect(zoom)
+            .animation(.easeInOut(duration: 0.18), value: zoom)
 
             topBar
 
@@ -328,6 +335,36 @@ struct NotebookView: View {
 
                 Spacer()
 
+                // Zoom controls.
+                Button(action: { zoomOut() }) {
+                    Image(systemName: "minus.magnifyingglass")
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white.opacity(zoom > zoomRange.lowerBound ? 0.85 : 0.3))
+                .help("Zoom out (⌘−)")
+                .disabled(zoom <= zoomRange.lowerBound)
+
+                Text("\(Int((zoom * 100).rounded()))%")
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.6))
+                    .frame(width: 38)
+                    .onTapGesture { zoom = 1.0 }
+                    .help("Reset zoom")
+
+                Button(action: { zoomIn() }) {
+                    Image(systemName: "plus.magnifyingglass")
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white.opacity(zoom < zoomRange.upperBound ? 0.85 : 0.3))
+                .help("Zoom in (⌘+)")
+                .disabled(zoom >= zoomRange.upperBound)
+
+                Divider()
+                    .frame(height: 14)
+                    .overlay(.white.opacity(0.25))
+
                 Button(action: capturePage) {
                     Image(systemName: "camera")
                         .font(.system(size: 14, weight: .medium))
@@ -361,6 +398,16 @@ struct NotebookView: View {
                 .foregroundStyle(.white.opacity(0.4))
                 .padding(.bottom, 14)
         }
+    }
+
+    // MARK: - Zoom
+
+    private func zoomIn() {
+        zoom = min(zoomRange.upperBound, zoom + zoomStep)
+    }
+
+    private func zoomOut() {
+        zoom = max(zoomRange.lowerBound, zoom - zoomStep)
     }
 
     // MARK: - Navigation
@@ -539,6 +586,8 @@ struct NotebookView: View {
             switch event.keyCode {
             case 123: goBackward(); return nil   // ⌘←
             case 124: goForward();  return nil   // ⌘→
+            case 24:  zoomIn();     return nil   // ⌘= / ⌘+
+            case 27:  zoomOut();    return nil   // ⌘−
             default:  return event
             }
         }
