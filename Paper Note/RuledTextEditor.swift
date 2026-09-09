@@ -115,7 +115,24 @@ struct RuledTextEditor: NSViewRepresentable {
             guard let i = parent.marks.firstIndex(where: { $0.contains(charIndex) })
             else { return false }
             var marks = parent.marks
-            marks[i].struck.toggle()
+            let m = marks[i]
+
+            // A mark spanning several words (saved by an older version) is
+            // split so only the clicked word toggles, not the whole run.
+            var words: [NSRange] = []
+            (parent.text as NSString).enumerateSubstrings(in: m.range, options: .byWords) {
+                _, wordRange, _, _ in words.append(wordRange)
+            }
+            if words.count > 1 {
+                marks.remove(at: i)
+                for r in words {
+                    var word = MarkRange(location: r.location, length: r.length, struck: m.struck)
+                    if word.contains(charIndex) { word.struck.toggle() }
+                    marks.append(word)
+                }
+            } else {
+                marks[i].struck.toggle()
+            }
             parent.marks = marks
             return true
         }

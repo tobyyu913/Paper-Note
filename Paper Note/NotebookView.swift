@@ -418,8 +418,9 @@ struct NotebookView: View {
 
     // MARK: - List marks
 
-    /// Turns the current selection into a list item: dotted underneath now,
-    /// crossed out with a pen line when clicked.
+    /// Toggles the current selection as list items. Listing splits the
+    /// selection into one mark per word — so each word crosses out on its
+    /// own — and listing an already-listed selection unlists it.
     private func markSelectionAsList() {
         guard let tv = NSApp.keyWindow?.firstResponder as? PadTextView else {
             show("Click into a page and select some words first"); return
@@ -429,11 +430,29 @@ struct NotebookView: View {
             show("Select the words to list first"); return
         }
         var marks = notebook.marks(for: tv.pageIndex)
-        // Replace any existing marks the selection overlaps.
-        marks.removeAll { NSIntersectionRange($0.range, sel).length > 0 }
-        marks.append(MarkRange(location: sel.location, length: sel.length, struck: false))
+
+        // Already listed? Selecting it again lifts the marks off.
+        if marks.contains(where: { NSIntersectionRange($0.range, sel).length > 0 }) {
+            marks.removeAll { NSIntersectionRange($0.range, sel).length > 0 }
+            notebook.setMarks(marks, for: tv.pageIndex)
+            show("Unlisted")
+            return
+        }
+
+        let ns = tv.string as NSString
+        var added = 0
+        ns.enumerateSubstrings(in: sel, options: .byWords) { _, wordRange, _, _ in
+            marks.append(MarkRange(location: wordRange.location,
+                                   length: wordRange.length, struck: false))
+            added += 1
+        }
+        if added == 0 {   // selection had no word characters — mark it whole
+            marks.append(MarkRange(location: sel.location, length: sel.length, struck: false))
+            added = 1
+        }
         notebook.setMarks(marks, for: tv.pageIndex)
-        show("Listed — click it to cross it out")
+        show(added == 1 ? "Listed — click it to cross it out"
+                        : "Listed \(added) words — click one to cross it out")
     }
 
     // MARK: - Page overflow (return on the last ruled line)
