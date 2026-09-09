@@ -53,4 +53,27 @@ enum Ruling {
     static func ruleY(line i: Int) -> CGFloat {
         firstBaseline + CGFloat(i) * rowHeight
     }
+
+    /// How many ruled lines fit on one page (the editor insets top and bottom).
+    static var linesPerPage: Int {
+        max(1, Int((Theme.pageHeight - topInset * 2) / rowHeight))
+    }
+
+    /// Page text with its list marks styled — a faint dotted underline for a
+    /// listed item, a pen stroke straight through it once crossed out. Used by
+    /// the static pages (flips, PNG, PDF) so they match the live editor.
+    static func styledText(_ text: String, marks: [MarkRange]) -> AttributedString {
+        var attr = AttributedString(text)
+        let length = (text as NSString).length
+        for m in marks {
+            guard m.location >= 0, m.location + m.length <= length,
+                  let r = Range(m.range, in: attr) else { continue }
+            if m.struck {
+                attr[r].strikethroughStyle = Text.LineStyle(pattern: .solid, color: Theme.ink)
+            } else {
+                attr[r].underlineStyle = Text.LineStyle(pattern: .dot, color: Theme.ink.opacity(0.35))
+            }
+        }
+        return attr
+    }
 }

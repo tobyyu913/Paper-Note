@@ -31,6 +31,9 @@ struct NotebookView: View {
     @State private var keyMonitor: Any?
     @State private var toast: String?
 
+    // After an auto page turn (return on the last line), focus the new page.
+    @State private var pendingFocus = false
+
     // Zoom for the whole book (view-only; page content is untouched).
     @State private var zoom: CGFloat = 1.0
     private let zoomRange: ClosedRange<CGFloat> = 0.5...1.6
@@ -177,7 +180,11 @@ struct NotebookView: View {
     private func pageSurface(_ i: Int, editable: Bool) -> some View {
         ZStack {
             LinedPaper()
-            RuledTextEditor(text: pageBinding(i), editable: editable)
+            RuledTextEditor(text: pageBinding(i),
+                            marks: marksBinding(i),
+                            editable: editable,
+                            pageIndex: i,
+                            onPageOverflow: { handleOverflow(from: i) })
         }
         .modifier(PageChrome())
     }
@@ -190,7 +197,7 @@ struct NotebookView: View {
         let text = notebook.pages.indices.contains(i) ? notebook.pages[i] : ""
         return ZStack {
             LinedPaper()
-            Text(text)
+            Text(Ruling.styledText(text, marks: notebook.marks(for: i)))
                 .font(.custom(Ruling.fontName, size: Ruling.fontSize))
                 .foregroundStyle(Theme.ink)
                 .lineSpacing(Ruling.lineSpacing)
@@ -365,6 +372,15 @@ struct NotebookView: View {
                     .frame(height: 14)
                     .overlay(.white.opacity(0.25))
 
+                Button(action: markSelectionAsList) {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white.opacity(0.85))
+                .help("List the selected words — click them later to cross them out")
+                .disabled(!coverOpen || turning)
+
                 Button(action: capturePage) {
                     Image(systemName: "camera")
                         .font(.system(size: 14, weight: .medium))
@@ -398,6 +414,57 @@ struct NotebookView: View {
                 .foregroundStyle(.white.opacity(0.4))
                 .padding(.bottom, 14)
         }
+    }
+
+    // MARK: - List marks
+
+    /// Turns the current selection into a list item: dotted underneath now,
+    /// crossed out with a pen line when clicked.
+    private func markSelectionAsList() {
+        guard let tv = NSApp.keyWindow?.firstResponder as? PadTextView else {
+            show("Click into a page and select some words first"); return
+        }
+        let sel = tv.selectedRange()
+        guard sel.length > 0 else {
+            show("Select the words to list first"); return
+        }
+        var marks = notebook.marks(for: tv.pageIndex)
+        // Replace any existing marks the selection overlaps.
+        marks.removeAll { NSIntersectionRange($0.range, sel).length > 0 }
+        marks.append(MarkRange(location: sel.location, length: sel.length, struck: false))
+        notebook.setMarks(marks, for: tv.pageIndex)
+        show("Listed — click it to cross it out")
+    }
+
+    // MARK: - Page overflow (return on the last ruled line)
+
+    private func handleOverflow(from i: Int) {
+        guard !turning else { return }
+        if spread && i == index {
+            // Left page ran out: keep writing on the right page.
+            while notebook.pages.count <= index + 1 { notebook.pages.append("") }
+            focusEditor(page: index + 1)
+        } else {
+            pendingFocus = true
+            turn(forward: true)
+        }
+    }
+
+    /// Puts the cursor at the end of the given page's editor.
+    private func focusEditor(page: Int) {
+        guard let win = NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible) else { return }
+        guard let tv = Self.padTextViews(in: win.contentView)
+            .first(where: { $0.pageIndex == page && $0.isEditable }) else { return }
+        win.makeFirstResponder(tv)
+        tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+    }
+
+    private static func padTextViews(in view: NSView?) -> [PadTextView] {
+        guard let view else { return [] }
+        var found: [PadTextView] = []
+        if let pad = view as? PadTextView { found.append(pad) }
+        for sub in view.subviews { found.append(contentsOf: padTextViews(in: sub)) }
+        return found
     }
 
     // MARK: - Zoom
@@ -479,6 +546,10 @@ struct NotebookView: View {
         } completion: {
             index += forward ? step : -step
             turning = false
+            if pendingFocus {
+                pendingFocus = false
+                DispatchQueue.main.async { focusEditor(page: index) }
+            }
         }
     }
 
@@ -490,7 +561,7 @@ struct NotebookView: View {
 
     @MainActor private func capturePage() {
         let text = notebook.pages.indices.contains(index) ? notebook.pages[index] : ""
-        let renderer = ImageRenderer(content: PageSnapshot(text: text))
+        let renderer = ImageRenderer(content: PageSnapshot(text: text, marks: notebook.marks(for: index)))
         renderer.scale = 3
         guard let cg = renderer.cgImage else { show("Couldn’t render page"); return }
         let rep = NSBitmapImageRep(cgImage: cg)
@@ -531,8 +602,8 @@ struct NotebookView: View {
               let ctx = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)
         else { show("Couldn’t create PDF"); return }
 
-        for text in notebook.pages {
-            let renderer = ImageRenderer(content: PageSnapshot(text: text))
+        for (i, text) in notebook.pages.enumerated() {
+            let renderer = ImageRenderer(content: PageSnapshot(text: text, marks: notebook.marks(for: i)))
             renderer.scale = 3
             guard let cg = renderer.cgImage else { continue }
             var pageBox = CGRect(origin: .zero, size: pageSize)
@@ -573,6 +644,13 @@ struct NotebookView: View {
         Binding(
             get: { notebook.pages.indices.contains(i) ? notebook.pages[i] : "" },
             set: { if notebook.pages.indices.contains(i) { notebook.pages[i] = $0 } }
+        )
+    }
+
+    private func marksBinding(_ i: Int) -> Binding<[MarkRange]> {
+        Binding(
+            get: { notebook.marks(for: i) },
+            set: { notebook.setMarks($0, for: i) }
         )
     }
 

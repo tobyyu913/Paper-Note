@@ -8,6 +8,17 @@
 import SwiftUI
 import LocalAuthentication
 
+/// A run of characters on a page that has been "listed" — marked as a to-do
+/// style item that a click crosses out with a pen line.
+struct MarkRange: Codable, Equatable {
+    var location: Int
+    var length: Int
+    var struck: Bool
+
+    var range: NSRange { NSRange(location: location, length: length) }
+    func contains(_ index: Int) -> Bool { index >= location && index < location + length }
+}
+
 struct Notebook: Identifiable, Codable, Equatable {
     var id = UUID()
     var title: String = "Untitled"
@@ -16,8 +27,23 @@ struct Notebook: Identifiable, Codable, Equatable {
     /// Index into Notebook.leathers for the cover color.
     var leather: Int = 0
     var pages: [String] = [""]
+    /// List marks per page, parallel to `pages`. Optional so libraries saved
+    /// by older versions (no such key) still decode — never risk the notes.
+    var pageMarks: [[MarkRange]]? = []
 
     var pageCount: Int { max(1, pages.count) }
+
+    func marks(for page: Int) -> [MarkRange] {
+        guard let pm = pageMarks, pm.indices.contains(page) else { return [] }
+        return pm[page]
+    }
+
+    mutating func setMarks(_ marks: [MarkRange], for page: Int) {
+        var pm = pageMarks ?? []
+        while pm.count <= page { pm.append([]) }
+        pm[page] = marks
+        pageMarks = pm
+    }
 
     /// Leather cover palettes: (base, highlight, stitch).
     static let leathers: [(base: Color, high: Color, stitch: Color)] = [

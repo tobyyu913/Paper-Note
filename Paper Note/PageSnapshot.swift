@@ -11,12 +11,13 @@ import SwiftUI
 
 struct PageSnapshot: View {
     var text: String
+    var marks: [MarkRange] = []
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             LinedPaper()
 
-            Text(text)
+            Text(Ruling.styledText(text, marks: marks))
                 .font(.custom(Ruling.fontName, size: Ruling.fontSize))
                 .foregroundStyle(Theme.ink)
                 .lineSpacing(Ruling.lineSpacing)
