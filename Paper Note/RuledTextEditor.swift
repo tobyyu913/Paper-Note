@@ -140,6 +140,11 @@ struct RuledTextEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let tv = notification.object as? NSTextView else { return }
             parent.text = tv.string
+            // Re-style the marks now that the edit has landed. Adjusted mark
+            // offsets can be applied against the pre-edit text (and silently
+            // skipped as out of bounds), which left listed words bare after
+            // clicks on blank space padded the page.
+            if !tv.hasMarkedText() { apply(to: tv) }
         }
 
         /// Keep mark offsets in step with edits so a listed item stays under
