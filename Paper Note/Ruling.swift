@@ -54,9 +54,13 @@ enum Ruling {
         firstBaseline + CGFloat(i) * rowHeight
     }
 
-    /// How many ruled lines fit on one page (the editor insets top and bottom).
+    /// How many ruled lines fit on one page — exactly the rules LinedPaper
+    /// prints (it draws while ruleY < pageHeight - 6), so the last printed
+    /// rule is writable and return there moves to the next page.
     static var linesPerPage: Int {
-        max(1, Int((Theme.pageHeight - topInset * 2) / rowHeight))
+        var i = 0
+        while ruleY(line: i) < Theme.pageHeight - 6 { i += 1 }
+        return max(1, i)
     }
 
     /// Page text with its list marks styled — a faint dotted underline for a
