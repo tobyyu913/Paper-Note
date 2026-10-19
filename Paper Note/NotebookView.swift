@@ -381,14 +381,44 @@ struct NotebookView: View {
                 .help("List the selected words — click them later to cross them out")
                 .disabled(!coverOpen || turning)
 
-                Button(action: capturePage) {
-                    Image(systemName: "camera")
-                        .font(.system(size: 14, weight: .medium))
+                if spread {
+                    // Three captures in the spread: both pages, left, right.
+                    Button(action: captureSpread) {
+                        Image(systemName: "camera.on.rectangle")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .help("Save both pages as one PNG in Documents/note book")
+                    .disabled(!coverOpen || turning)
+
+                    Button(action: { capturePage(index) }) {
+                        Image(systemName: "rectangle.lefthalf.inset.filled")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .help("Save the left page as a PNG in Documents/note book")
+                    .disabled(!coverOpen || turning)
+
+                    Button(action: { capturePage(index + 1) }) {
+                        Image(systemName: "rectangle.righthalf.inset.filled")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .help("Save the right page as a PNG in Documents/note book")
+                    .disabled(!coverOpen || turning)
+                } else {
+                    Button(action: { capturePage(index) }) {
+                        Image(systemName: "camera")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .help("Save this page as a PNG in Documents/note book")
+                    .disabled(!coverOpen || turning)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.white.opacity(0.85))
-                .help("Save this page as a PNG in Documents/note book")
-                .disabled(!coverOpen || turning)
 
                 Button(action: exportPDF) {
                     Image(systemName: "arrow.down.doc")
@@ -578,21 +608,45 @@ struct NotebookView: View {
         NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
-    @MainActor private func capturePage() {
-        let text = notebook.pages.indices.contains(index) ? notebook.pages[index] : ""
-        let renderer = ImageRenderer(content: PageSnapshot(text: text, marks: notebook.marks(for: index)))
+    /// Saves a single page as "<title>-P<n>.png".
+    @MainActor private func capturePage(_ page: Int) {
+        let text = notebook.pages.indices.contains(page) ? notebook.pages[page] : ""
+        let renderer = ImageRenderer(content: PageSnapshot(text: text, marks: notebook.marks(for: page)))
         renderer.scale = 3
         guard let cg = renderer.cgImage else { show("Couldn’t render page"); return }
-        let rep = NSBitmapImageRep(cgImage: cg)
-        guard let data = rep.representation(using: .png, properties: [:]) else { return }
+        savePNG(cg, name: "\(safeTitle)-P\(page + 1).png")
+    }
 
+    /// Saves the open spread (left and right page side by side) as
+    /// "<title>-P<n>-<n+1>.png".
+    @MainActor private func captureSpread() {
+        let left = index, right = index + 1
+        let leftText = notebook.pages.indices.contains(left) ? notebook.pages[left] : ""
+        let rightText = notebook.pages.indices.contains(right) ? notebook.pages[right] : ""
+        let renderer = ImageRenderer(content:
+            HStack(spacing: 0) {
+                PageSnapshot(text: leftText, marks: notebook.marks(for: left))
+                PageSnapshot(text: rightText, marks: notebook.marks(for: right))
+            }
+        )
+        renderer.scale = 3
+        guard let cg = renderer.cgImage else { show("Couldn’t render spread"); return }
+        savePNG(cg, name: "\(safeTitle)-P\(left + 1)-\(right + 1).png")
+    }
+
+    /// The notebook title with filesystem-unsafe characters replaced.
+    private var safeTitle: String {
         let illegal = CharacterSet(charactersIn: "/\\:*?\"<>|")
-        let cleanTitle = notebook.title
+        let clean = notebook.title
             .components(separatedBy: illegal).joined(separator: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = cleanTitle.isEmpty ? "Untitled" : cleanTitle
-        let name = "\(title)-P\(index + 1).png"
+        return clean.isEmpty ? "Untitled" : clean
+    }
 
+    /// Writes a rendered image as a PNG into Documents/note book.
+    private func savePNG(_ cg: CGImage, name: String) {
+        let rep = NSBitmapImageRep(cgImage: cg)
+        guard let data = rep.representation(using: .png, properties: [:]) else { return }
         do {
             let docs = try FileManager.default.url(
                 for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -632,12 +686,7 @@ struct NotebookView: View {
         }
         ctx.closePDF()
 
-        let illegal = CharacterSet(charactersIn: "/\\:*?\"<>|")
-        let cleanTitle = notebook.title
-            .components(separatedBy: illegal).joined(separator: "-")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = cleanTitle.isEmpty ? "Untitled" : cleanTitle
-        let name = "\(title).pdf"
+        let name = "\(safeTitle).pdf"
 
         do {
             let docs = try FileManager.default.url(

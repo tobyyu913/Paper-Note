@@ -12,6 +12,7 @@ struct LibraryView: View {
 
     @State private var pendingDelete: Notebook?
     @State private var showPasscodeSheet = false
+    @State private var showAccountSheet = false
 
     private let columns = [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 28)]
 
@@ -31,6 +32,16 @@ struct LibraryView: View {
                         .foregroundStyle(.white.opacity(0.92))
 
                     Spacer()
+
+                    Button { showAccountSheet = true } label: {
+                        Label(library.account.isSignedIn ? (library.account.syncing ? "Syncing…" : "Synced") : "Sign in",
+                              systemImage: library.account.isSignedIn ? "icloud" : "person.crop.circle")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .help("Sign in to keep your notebooks in sync across devices")
+                    .padding(.trailing, 18)
 
                     Button { showPasscodeSheet = true } label: {
                         Label("Security", systemImage: "lock.shield")
@@ -63,6 +74,9 @@ struct LibraryView: View {
         }
         .sheet(isPresented: $showPasscodeSheet) {
             PasscodeSheet(library: library)
+        }
+        .sheet(isPresented: $showAccountSheet) {
+            AccountSheet(library: library)
         }
     }
 

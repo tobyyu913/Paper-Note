@@ -21,7 +21,9 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,11 +44,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 class MainActivity : FragmentActivity() {
+    private lateinit var store: NotebookStore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val store = NotebookStore(this)
+        store = NotebookStore(this)
         setContent { App(store) }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        store.sync.syncNow()
     }
 }
 
@@ -77,6 +86,7 @@ fun App(store: NotebookStore) {
 @Composable
 fun LibraryScreen(store: NotebookStore) {
     var showSecurity by remember { mutableStateOf(false) }
+    var showAccount by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(Paper.deskDark)) {
         Column(Modifier.fillMaxSize().systemBarsPadding()) {
             Row(
@@ -91,6 +101,13 @@ fun LibraryScreen(store: NotebookStore) {
                     fontSize = 30.sp,
                     modifier = Modifier.weight(1f)
                 )
+                IconButton(onClick = { showAccount = true }) {
+                    Icon(
+                        if (store.sync.isSignedIn) Icons.Filled.CloudDone else Icons.Filled.AccountCircle,
+                        "Account",
+                        tint = Color.White.copy(alpha = 0.8f)
+                    )
+                }
                 IconButton(onClick = { showSecurity = true }) {
                     Icon(
                         Icons.Filled.Lock, "Security",
@@ -117,6 +134,9 @@ fun LibraryScreen(store: NotebookStore) {
 
         if (showSecurity) {
             SecurityDialog(store) { showSecurity = false }
+        }
+        if (showAccount) {
+            AccountDialog(store) { showAccount = false }
         }
     }
 }

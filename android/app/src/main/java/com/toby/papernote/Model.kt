@@ -19,7 +19,11 @@ data class Notebook(
     val writer: String = "",
     val dateText: String = "",
     val leather: Int = 0,
-    val pages: List<String> = listOf("")
+    val pages: List<String> = listOf(""),
+    /** Milliseconds since 1970 of the last edit; used to merge across devices. */
+    val updatedAt: Long = 0L,
+    /** List marks made on macOS, carried through untouched so syncing from a phone never drops them. */
+    val pageMarks: JSONArray? = null
 ) {
     val pageCount: Int get() = maxOf(1, pages.size)
     val palette: Leather get() = leathers[leather.coerceIn(0, leathers.size - 1)]
@@ -31,6 +35,8 @@ data class Notebook(
         put("dateText", dateText)
         put("leather", leather)
         put("pages", JSONArray(pages))
+        if (updatedAt > 0L) put("updatedAt", updatedAt)
+        if (pageMarks != null) put("pageMarks", pageMarks)
     }
 
     companion object {
@@ -43,7 +49,9 @@ data class Notebook(
                 writer = o.optString("writer", ""),
                 dateText = o.optString("dateText", ""),
                 leather = o.optInt("leather", 0),
-                pages = pages.ifEmpty { listOf("") }
+                pages = pages.ifEmpty { listOf("") },
+                updatedAt = o.optLong("updatedAt", 0L),
+                pageMarks = o.optJSONArray("pageMarks")
             )
         }
     }
@@ -75,6 +83,8 @@ class NotebookStore(context: Context) {
         prefs.edit().putBoolean(KEY_USE_BIOMETRICS, value).apply()
     }
 
+    val sync = SyncAccount(context, this)
+
     init { load() }
 
     fun newNotebook(): Int {
@@ -82,7 +92,8 @@ class NotebookStore(context: Context) {
         notebooks.add(
             Notebook(
                 dateText = date,
-                leather = notebooks.size % leathers.size
+                leather = notebooks.size % leathers.size,
+                updatedAt = System.currentTimeMillis()
             )
         )
         save()
@@ -91,16 +102,68 @@ class NotebookStore(context: Context) {
 
     fun update(index: Int, transform: (Notebook) -> Notebook) {
         if (index in notebooks.indices) {
-            notebooks[index] = transform(notebooks[index])
+            val before = notebooks[index]
+            val after = transform(before)
+            if (after == before) return
+            notebooks[index] = after.copy(updatedAt = System.currentTimeMillis())
             save()
         }
     }
 
     fun delete(index: Int) {
         if (index in notebooks.indices) {
+            val id = notebooks[index].id.lowercase()
+            tombstones[id] = System.currentTimeMillis()
+            saveTombstones()
             notebooks.removeAt(index)
             save()
         }
+    }
+
+    // ---- Sync support ----
+
+    /** Deleted notebook ids → when, so deletions reach other devices. */
+    val tombstones: MutableMap<String, Long> = loadTombstones()
+
+    private fun loadTombstones(): MutableMap<String, Long> {
+        val m = mutableMapOf<String, Long>()
+        runCatching {
+            val o = JSONObject(prefs.getString(KEY_TOMBSTONES, "{}") ?: "{}")
+            o.keys().forEach { k -> m[k] = o.getLong(k) }
+        }
+        return m
+    }
+
+    fun saveTombstones() {
+        val o = JSONObject()
+        tombstones.forEach { (k, v) -> o.put(k, v) }
+        prefs.edit().putString(KEY_TOMBSTONES, o.toString()).apply()
+    }
+
+    /**
+     * Merges the server's set in: newer wins per notebook, deletions remove
+     * local copies that aren't newer. Must run on the main thread.
+     */
+    fun applyRemote(rows: List<SyncRow>) {
+        var changed = false
+        for (row in rows) {
+            val i = notebooks.indexOfFirst { it.id.equals(row.id, ignoreCase = true) }
+            val localStamp = if (i >= 0) notebooks[i].updatedAt else -1L
+            if (row.deleted) {
+                if (i >= 0 && localStamp <= row.updatedAt) {
+                    if (openIndex == i) openIndex = null
+                    notebooks.removeAt(i); changed = true
+                }
+            } else if (row.data != null) {
+                val nb = row.data.copy(id = row.id.lowercase(), updatedAt = row.updatedAt)
+                if (i >= 0) {
+                    if (row.updatedAt > localStamp) { notebooks[i] = nb; changed = true }
+                } else if (!tombstones.containsKey(row.id.lowercase())) {
+                    notebooks.add(nb); changed = true
+                }
+            }
+        }
+        if (changed) save(triggerSync = false)
     }
 
     private fun load() {
@@ -114,17 +177,19 @@ class NotebookStore(context: Context) {
         }
     }
 
-    fun save() {
+    fun save(triggerSync: Boolean = true) {
         runCatching {
             val arr = JSONArray()
             notebooks.forEach { arr.put(it.toJson()) }
             file.writeText(arr.toString())
         }
+        if (triggerSync) sync.scheduleSync()
     }
 
     companion object {
         const val DEFAULT_PASSCODE = "paper note"
         private const val KEY_PASSCODE = "passcode"
         private const val KEY_USE_BIOMETRICS = "use_biometrics"
+        private const val KEY_TOMBSTONES = "tombstones"
     }
 }

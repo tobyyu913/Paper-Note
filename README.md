@@ -39,6 +39,21 @@ Requires Android 8.0 (API 26) or later.
 - ✍️ Ruled paper with handwriting-style text that sits on the lines.
 - 📸 Save a page as a PNG, or export the whole notebook as a PDF.
 - 🎨 Pick from several leather cover colors.
+- ☁️ **Sign in on any device** and your notebooks follow you — Mac and
+  Android stay in sync through Google Firebase.
+
+## Sync across devices
+
+Open **Sign in** on the shelf, enter an email and password, and **Create
+account** once; then **Sign in** with the same email on your other devices.
+Every edit syncs a couple of seconds later, and again whenever the app comes
+to the front. Notebooks merge per notebook: the newer copy wins, and deleting
+one on a device deletes it everywhere.
+
+Storage is Firebase Authentication + Cloud Firestore (project `paper-note-73a4d`),
+reached over HTTPS through their REST APIs — no SDK. Each user can only read
+and write their own `users/{uid}/notebooks` documents (see
+[`firestore.rules`](firestore.rules)).
 
 ## Build from source
 

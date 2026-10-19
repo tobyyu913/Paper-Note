@@ -35,6 +35,10 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 820, minHeight: 920)
+        .task { await library.syncNow() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            library.scheduleSync(after: 0.1)
+        }
     }
 }
 

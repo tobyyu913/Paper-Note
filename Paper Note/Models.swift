@@ -30,8 +30,18 @@ struct Notebook: Identifiable, Codable, Equatable {
     /// List marks per page, parallel to `pages`. Optional so libraries saved
     /// by older versions (no such key) still decode — never risk the notes.
     var pageMarks: [[MarkRange]]? = []
+    /// Milliseconds since 1970 of the last edit — used to merge across
+    /// devices. Optional so older libraries still decode.
+    var updatedAt: Int? = nil
 
     var pageCount: Int { max(1, pages.count) }
+
+    /// Equal apart from the sync stamp.
+    func sameContent(as other: Notebook) -> Bool {
+        var a = self, b = other
+        a.updatedAt = nil; b.updatedAt = nil
+        return a == b
+    }
 
     func marks(for page: Int) -> [MarkRange] {
         guard let pm = pageMarks, pm.indices.contains(page) else { return [] }
@@ -64,6 +74,8 @@ final class Library {
     var notebooks: [Notebook] = [] { didSet { save() } }
     var openID: Notebook.ID?
 
+    let account = SyncAccount()
+
     /// Whether Touch ID may be used to unlock notebooks. When off, only the
     /// passcode is accepted. Persisted across launches; defaults to on.
     var useBiometrics: Bool = (UserDefaults.standard.object(forKey: "PaperNoteUseBiometrics") as? Bool) ?? true {
@@ -91,6 +103,8 @@ final class Library {
     }
 
     func delete(_ id: Notebook.ID) {
+        tombstones[id.uuidString.lowercased()] = Library.nowMs()
+        saveTombstones()
         notebooks.removeAll { $0.id == id }
         if openID == id { openID = nil }
     }
@@ -130,11 +144,126 @@ final class Library {
     private func load() {
         guard let data = try? Data(contentsOf: fileURL),
               let saved = try? JSONDecoder().decode([Notebook].self, from: data) else { return }
+        lastSaved = saved
         notebooks = saved
     }
 
+    /// The library as last written to disk, with sync stamps. `notebooks` in
+    /// memory is compared against this on every save so only notebooks that
+    /// actually changed get a fresh `updatedAt`.
+    private var lastSaved: [Notebook] = []
+    private var applyingRemote = false
+
+    /// The library file is kept "locked" (the Finder lock / immutable flag) so
+    /// other apps and editors can't change it. Saving unlocks it just long
+    /// enough to write, then locks it again.
     private func save() {
-        guard let data = try? JSONEncoder().encode(notebooks) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        let stamped = applyingRemote ? notebooks : stampChanges(notebooks)
+        lastSaved = stamped
+        guard let data = try? JSONEncoder().encode(stamped) else { return }
+        let url = fileURL
+        setLocked(false, url)
+        try? data.write(to: url, options: .atomic)
+        setLocked(true, url)
+        if !applyingRemote { scheduleSync() }
+    }
+
+    private func stampChanges(_ current: [Notebook]) -> [Notebook] {
+        let previous = Dictionary(lastSaved.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let now = Library.nowMs()
+        return current.map { nb in
+            var out = nb
+            if let old = previous[nb.id], old.sameContent(as: nb) {
+                out.updatedAt = old.updatedAt
+            } else {
+                out.updatedAt = now
+            }
+            return out
+        }
+    }
+
+    private func setLocked(_ locked: Bool, _ url: URL) {
+        try? FileManager.default.setAttributes([.immutable: locked], ofItemAtPath: url.path)
+    }
+
+    // MARK: - Sync
+
+    static func nowMs() -> Int { Int(Date().timeIntervalSince1970 * 1000) }
+
+    /// Deleted notebook ids (lower-cased) → when, so a deletion here also
+    /// deletes on other devices instead of the notebook coming back.
+    private var tombstones: [String: Int] = {
+        guard let data = UserDefaults.standard.data(forKey: "PaperNoteTombstones"),
+              let t = try? JSONDecoder().decode([String: Int].self, from: data) else { return [:] }
+        return t
+    }()
+
+    private func saveTombstones() {
+        UserDefaults.standard.set(try? JSONEncoder().encode(tombstones), forKey: "PaperNoteTombstones")
+    }
+
+    private var syncWork: DispatchWorkItem?
+
+    /// Sync shortly after the last edit (edits come in bursts while typing).
+    func scheduleSync(after seconds: Double = 2) {
+        guard account.isSignedIn else { return }
+        syncWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in Task { @MainActor in await self?.syncNow() } }
+        syncWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    @MainActor
+    func syncNow() async {
+        guard account.isSignedIn, !account.syncing else { return }
+        account.syncing = true
+        defer { account.syncing = false }
+
+        var rows = lastSaved.map {
+            SyncRow(id: $0.id.uuidString.lowercased(), updatedAt: $0.updatedAt ?? 0, deleted: false, data: $0)
+        }
+        for (id, when) in tombstones {
+            rows.append(SyncRow(id: id, updatedAt: when, deleted: true, data: nil))
+        }
+
+        do {
+            let merged = try await account.sync(rows: rows)
+            apply(merged)
+            tombstones = [:]
+            saveTombstones()
+            account.lastSync = Date()
+            account.status = "Synced"
+        } catch {
+            account.status = "Sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Merges the server's set into the local library: newer wins per notebook.
+    private func apply(_ rows: [SyncRow]) {
+        var result = lastSaved
+        var changed = false
+        for row in rows {
+            guard let uuid = UUID(uuidString: row.id) else { continue }
+            let i = result.firstIndex { $0.id == uuid }
+            let localStamp = i.map { result[$0].updatedAt ?? 0 } ?? -1
+            if row.deleted {
+                if let i, localStamp <= row.updatedAt {
+                    result.remove(at: i); changed = true
+                    if openID == uuid { openID = nil }
+                }
+            } else if var nb = row.data {
+                nb.id = uuid
+                nb.updatedAt = row.updatedAt
+                if let i {
+                    if row.updatedAt > localStamp { result[i] = nb; changed = true }
+                } else if tombstones[row.id] == nil {
+                    result.append(nb); changed = true
+                }
+            }
+        }
+        guard changed else { return }
+        applyingRemote = true
+        notebooks = result
+        applyingRemote = false
     }
 }

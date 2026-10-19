@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -140,9 +141,13 @@ fun NotebookScreen(store: NotebookStore, index: Int) {
     }
 
     Column(Modifier.fillMaxSize().background(Paper.desk)) {
-        // Top bar.
+        // Top bar. statusBarsPadding keeps it clear of the clock and status
+        // icons — with edge-to-edge the app draws under the status bar.
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp)
+                .padding(top = 12.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = { store.openIndex = null }) {
