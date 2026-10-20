@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -175,6 +176,13 @@ fun NotebookScreen(store: NotebookStore, index: Int) {
                 }
             }
             Spacer(Modifier.width(1.dp).weight(1f))
+            if (store.sync.isSignedIn) {
+                IconButton(onClick = {
+                    store.sync.syncNow { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+                }, enabled = !store.sync.syncing) {
+                    Icon(Icons.Filled.Sync, "Sync now", tint = Color.White.copy(alpha = if (store.sync.syncing) 0.35f else 0.85f))
+                }
+            }
             IconButton(onClick = { capture() }, enabled = coverOpen && !turning) {
                 Icon(Icons.Filled.PhotoCamera, "Save page as PNG", tint = Color.White.copy(alpha = if (coverOpen) 0.85f else 0.3f))
             }

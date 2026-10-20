@@ -170,8 +170,10 @@ class SyncAccount(context: Context, private val store: NotebookStore) {
         main.postDelayed(syncRunnable, delayMs)
     }
 
-    fun syncNow() {
-        if (!isSignedIn || syncing) return
+    /** Runs a sync; [done] gets a short human message on the main thread. */
+    fun syncNow(done: ((String) -> Unit)? = null) {
+        if (!isSignedIn) { done?.invoke("Sign in first to sync"); return }
+        if (syncing) { done?.invoke("Already syncing…"); return }
         syncing = true
         val local = store.notebooks.map { SyncRow(it.id.lowercase(), it.updatedAt, false, it) } +
             store.tombstones.map { (id, at) -> SyncRow(id, at, true, null) }
@@ -211,11 +213,13 @@ class SyncAccount(context: Context, private val store: NotebookStore) {
                     lastSync = System.currentTimeMillis()
                     status = "Synced"
                     syncing = false
+                    done?.invoke("Synced ${store.notebooks.size} notebook${if (store.notebooks.size == 1) "" else "s"}")
                 }
             } catch (e: Exception) {
                 main.post {
                     status = if (e is NotSignedIn) "Signed out — please sign in again" else "Sync failed: ${e.message}"
                     syncing = false
+                    done?.invoke(status)
                 }
             }
         }.start()

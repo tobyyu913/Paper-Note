@@ -1,6 +1,7 @@
 package com.toby.papernote
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -35,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -87,6 +90,7 @@ fun App(store: NotebookStore) {
 fun LibraryScreen(store: NotebookStore) {
     var showSecurity by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     Box(Modifier.fillMaxSize().background(Paper.deskDark)) {
         Column(Modifier.fillMaxSize().systemBarsPadding()) {
             Row(
@@ -101,6 +105,16 @@ fun LibraryScreen(store: NotebookStore) {
                     fontSize = 30.sp,
                     modifier = Modifier.weight(1f)
                 )
+                if (store.sync.isSignedIn) {
+                    IconButton(onClick = {
+                        store.sync.syncNow { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
+                    }, enabled = !store.sync.syncing) {
+                        Icon(
+                            Icons.Filled.Sync, "Sync now",
+                            tint = Color.White.copy(alpha = if (store.sync.syncing) 0.35f else 0.8f)
+                        )
+                    }
+                }
                 IconButton(onClick = { showAccount = true }) {
                     Icon(
                         if (store.sync.isSignedIn) Icons.Filled.CloudDone else Icons.Filled.AccountCircle,
